@@ -1,0 +1,183 @@
+---
+title: "Human Activity Recognition"
+date: "6 March 2016"
+output: html_document
+---
+
+## Basic understanding of the data
+
+```{r, echo=FALSE}
+# Setting up the environment
+rm(list = ls(all=T))
+setwd("F:\\Coursera\\Data Science Specialization\\8. Practical Machine Learning\\Week 3")
+```
+
+Read the data into R
+
+```{r, echo=T}
+trainingdata <- read.csv("pml-training.csv")
+testingdata  <- read.csv("pml-testing.csv")
+```
+
+
+```{r, echo=FALSE}
+library(caret)
+library(randomForest)
+```
+
+Look for NA's in each Column
+
+```{r, echo=TRUE}
+apply(trainingdata, 2, function(x) {sum(is.na(x))})
+```
+
+There are many columns which are almost filled with NA's.
+
+Hence, remove those columns
+
+```{r, echo=FALSE}
+# Removing NA's
+n <- c()
+for (i in 1:ncol(trainingdata)){
+  if (sum(is.na(trainingdata[,i])) > 5000){
+    n <- c(n,i)
+  } 
+}
+```
+
+Look for no. of unique values in each column, which would give an idea about categorical variables
+
+```{r, echo=TRUE}
+apply(trainingdata, 2, function(x) {length(unique(x))})
+```
+
+# Model Selection
+
+There are many categorical variables in the data and the target attribute has 5 classes. RANDOM FOREST can handle such data, in a better way & classifying the target attribute into 5 classes is not an issue.
+
+Random Forest cannot handle categorical variables with more than 50 levels.
+
+So such variables have been converted to numeric values
+
+```{r, echo=FALSE}
+training <- trainingdata[,-n]
+testing <- testingdata[,-n]
+
+for ( i in 1:ncol(training)){
+  if (length(unique(training[,1])) > 49){
+    training[,i] <- as.numeric(training[,i])
+    testing[,i] <- as.numeric(testing[,i])
+  }
+}
+```
+
+
+```{r, echo=FALSE}
+# Summary Statistics for numeric attribute
+num <- sapply(training, is.numeric)
+# names(training)
+# summary(training[,num])
+```
+
+Remove the "x" variable from the data sets. Its an unnecessary information.
+
+Split the data into train and test for model building.
+
+```{r, echo=TRUE}
+# Data Partition
+training <- training[,-1]
+testing <- testing[,-1]
+inTrain <- createDataPartition(y=training$classe, p=0.7, list = FALSE)
+train <- training[inTrain,]
+test <- training[-inTrain,]
+```
+
+## Building the model
+
+Build a random forest model with 500 trees and 60 variables to choose at each node.
+
+```{r, echo=TRUE}
+fit <- randomForest(train[,-92], as.factor(train[,92]), ntree = 500, mtry = 60)
+```
+
+
+
+```{r, echo=FALSE}
+pred_train <- predict(fit, train)
+# summary(pred_train)
+p <- table(train$classe, pred_train)
+# p
+acc_train <- sum(diag(p))/sum(sum(p))
+# acc_train
+```
+
+
+
+```{r, echo=FALSE}
+pred_test <- predict(fit, test)
+# summary(pred_test)
+q <- table(test$classe, pred_test)
+# q
+accuracy_test <- sum(diag(q))/sum(sum(q))
+accuracy_test <- 100*round(accuracy_test, 4)
+```
+
+Accuraccy, Sensitivity and precision of the model on the test data set
+
+```{r, echo=TRUE}
+accuracy_test
+```
+
+## Out of sample error
+
+For reporting the best estimate of the error by the model(out of sample error), K fold cross validation method is choosen. 
+
+Since the K-Fold method divides the data into multiple parts and tests the model on different portions of the data, an average error of the model on these diiferent porions would give a fair estimate of the our of sample error
+
+```{r, echo=FALSE}
+library(caret)
+set.seed(1234)
+folds <- createFolds(y=training$classe, k=5, list = T, returnTrain = T)
+sapply(folds, length)
+acc <- c()
+```
+
+
+```{r, echo=FALSE}
+for (e in 1:length(folds)){
+  train <- training[unlist(folds[e]),]
+  test <- training[-unlist(folds[e]),]
+  
+  fit <- randomForest(train[,-92], as.factor(train[,92]), ntree = 500, mtry = 60)
+  pred_train <- predict(fit, train)
+  summary(pred_train)
+  p <- table(train$classe, pred_train)
+  p
+  acc_train <- sum(diag(p))/sum(sum(p))
+  acc_train
+  
+  pred_test <- predict(fit, test)
+  summary(pred_test)
+  q <- table(test$classe, pred_test)
+  q
+  acc_test <- sum(diag(q))/sum(sum(q))
+#   accuracy_test
+#   
+#   acc_test
+  acc <- c(acc, acc_test)
+}
+```
+
+Errors from k-fold cross validation
+
+```{r, echo=FALSE}
+100*round(acc, 4)
+```
+
+Mean of these errors
+
+```{r, echo=FALSE}
+100*round(mean(acc), 4)
+```
+
+The errors are pretty close to each other, indicating that the mean of these errors is a reliable estimate of the ou of sample error.
